@@ -1,0 +1,1241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EcoListen - Forest Audio Analysis</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tensorflow/4.2.0/tf.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #2d5016 0%, #3e6b1f 50%, #4a7c23 100%);
+            color: #333;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 40px;
+            color: white;
+        }
+
+        h1 {
+            font-size: 3rem;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .subtitle {
+            font-size: 1.2rem;
+            opacity: 0.9;
+            margin-bottom: 30px;
+        }
+
+        .upload-section {
+            background: rgba(255,255,255,0.95);
+            border-radius: 20px;
+            padding: 40px;
+            margin-bottom: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            backdrop-filter: blur(10px);
+        }
+
+        .recording-section {
+            background: rgba(255,255,255,0.95);
+            border-radius: 20px;
+            padding: 40px;
+            margin-bottom: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            backdrop-filter: blur(10px);
+        }
+
+        .audio-options {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-bottom: 30px;
+        }
+
+        .option-card {
+            background: rgba(74, 124, 35, 0.1);
+            border: 2px solid #4a7c23;
+            border-radius: 15px;
+            padding: 30px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .option-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 25px rgba(74, 124, 35, 0.2);
+            background: rgba(74, 124, 35, 0.15);
+        }
+
+        .option-card.active {
+            background: rgba(74, 124, 35, 0.2);
+            border-color: #2d5016;
+        }
+
+        .option-icon {
+            font-size: 3rem;
+            margin-bottom: 15px;
+            color: #4a7c23;
+        }
+
+        .option-title {
+            font-size: 1.3rem;
+            font-weight: 600;
+            color: #2d5016;
+            margin-bottom: 10px;
+        }
+
+        .option-desc {
+            color: #666;
+            font-size: 0.95rem;
+        }
+
+        .recording-controls {
+            text-align: center;
+            margin: 30px 0;
+        }
+
+        .record-button {
+            background: linear-gradient(45deg, #dc3545, #e74c3c);
+            color: white;
+            border: none;
+            padding: 20px 40px;
+            border-radius: 50px;
+            cursor: pointer;
+            font-size: 1.2rem;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 12px;
+            box-shadow: 0 5px 15px rgba(220, 53, 69, 0.3);
+        }
+
+        .record-button:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 25px rgba(220, 53, 69, 0.4);
+        }
+
+        .record-button.recording {
+            background: linear-gradient(45deg, #28a745, #20c997);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.7); }
+            70% { box-shadow: 0 0 0 20px rgba(220, 53, 69, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0); }
+        }
+
+        .recording.pulse:hover {
+            box-shadow: 0 0 0 0 rgba(40, 167, 69, 0.7);
+        }
+
+        .recording-timer {
+            font-size: 2rem;
+            font-weight: 600;
+            color: #dc3545;
+            margin: 20px 0;
+            font-family: 'Courier New', monospace;
+        }
+
+        .recording-visualization {
+            height: 100px;
+            background: #f8f9fa;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            margin: 20px 0;
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .wave-container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            height: 100%;
+        }
+
+        .wave-bar {
+            width: 4px;
+            background: linear-gradient(45deg, #4a7c23, #5d8f2a);
+            margin: 0 2px;
+            border-radius: 2px;
+            transition: height 0.1s ease;
+        }
+
+        .permission-message {
+            background: rgba(255, 193, 7, 0.1);
+            border: 2px solid #ffc107;
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px 0;
+            text-align: center;
+            color: #856404;
+        }
+
+        .error-message {
+            background: rgba(220, 53, 69, 0.1);
+            border: 2px solid #dc3545;
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px 0;
+            text-align: center;
+            color: #721c24;
+        }
+
+        @media (max-width: 768px) {
+            .audio-options {
+                grid-template-columns: 1fr;
+            }
+            
+            .option-card, .recording-controls {
+                padding: 20px;
+            }
+            
+            .record-button {
+                padding: 15px 30px;
+                font-size: 1rem;
+            }
+        }
+
+        .upload-area {
+            border: 3px dashed #4a7c23;
+            border-radius: 15px;
+            padding: 60px 20px;
+            text-align: center;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .upload-area:hover {
+            border-color: #2d5016;
+            background: rgba(74, 124, 35, 0.05);
+            transform: translateY(-2px);
+        }
+
+        .upload-area.drag-over {
+            border-color: #2d5016;
+            background: rgba(74, 124, 35, 0.1);
+            transform: scale(1.02);
+        }
+
+        .upload-icon {
+            font-size: 4rem;
+            color: #4a7c23;
+            margin-bottom: 20px;
+        }
+
+        .upload-text {
+            font-size: 1.3rem;
+            margin-bottom: 10px;
+            color: #2d5016;
+            font-weight: 600;
+        }
+
+        .upload-subtext {
+            color: #666;
+            font-size: 0.9rem;
+        }
+
+        #audioInput {
+            display: none;
+        }
+
+        .analysis-section {
+            display: none;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-bottom: 30px;
+        }
+
+        .spectrogram-panel, .results-panel {
+            background: rgba(255,255,255,0.95);
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+        }
+
+        .panel-title {
+            font-size: 1.5rem;
+            margin-bottom: 20px;
+            color: #2d5016;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .spectrogram-container {
+            width: 100%;
+            height: 300px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #f8f9fa;
+            position: relative;
+            overflow: hidden;
+        }
+
+        #spectrogramCanvas {
+            max-width: 100%;
+            max-height: 100%;
+            border-radius: 8px;
+        }
+
+        .loading {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 15px;
+            color: #666;
+        }
+
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid #e0e0e0;
+            border-top: 4px solid #4a7c23;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .dashboard-section {
+            display: none;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 30px;
+            margin-bottom: 30px;
+        }
+
+        .dashboard-card {
+            background: rgba(255,255,255,0.95);
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+            transition: transform 0.3s ease;
+        }
+
+        .dashboard-card:hover {
+            transform: translateY(-5px);
+        }
+
+        .chart-container {
+            position: relative;
+            height: 300px;
+            margin-top: 20px;
+        }
+
+        .story-section {
+            background: rgba(255,255,255,0.95);
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+            margin-top: 30px;
+            display: none;
+        }
+
+        .story-content {
+            font-size: 1.1rem;
+            line-height: 1.7;
+            color: #444;
+        }
+
+        .species-tag {
+            display: inline-block;
+            background: linear-gradient(45deg, #4a7c23, #5d8f2a);
+            color: white;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            margin: 5px;
+            font-weight: 500;
+        }
+
+        .confidence-bar {
+            width: 100%;
+            height: 20px;
+            background: #e0e0e0;
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 10px 0;
+        }
+
+        .confidence-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #4a7c23, #5d8f2a);
+            border-radius: 10px;
+            transition: width 0.8s ease;
+        }
+
+        .audio-controls {
+            margin-top: 20px;
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+
+        .btn {
+            background: linear-gradient(45deg, #4a7c23, #5d8f2a);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(74, 124, 35, 0.3);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #e0e0e0;
+            border-radius: 4px;
+            margin: 20px 0;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #4a7c23, #5d8f2a);
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 2rem;
+            }
+            
+            .container {
+                padding: 15px;
+            }
+            
+            .upload-area {
+                padding: 40px 15px;
+            }
+            
+            .analysis-section {
+                grid-template-columns: 1fr;
+            }
+            
+            .dashboard-section {
+                grid-template-columns: 1fr;
+            }
+            
+            .spectrogram-panel, .results-panel, .dashboard-card {
+                padding: 20px;
+            }
+        }
+
+        .dataset-info {
+            background: rgba(255,255,255,0.1);
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 30px;
+            color: white;
+            text-align: center;
+        }
+
+        .dataset-link {
+            color: #a8d465;
+            text-decoration: none;
+            font-weight: 500;
+        }
+
+        .dataset-link:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🌲 EcoListen</h1>
+            <p class="subtitle">Discover the Hidden Symphony of Forest Life Through AI-Powered Audio Analysis</p>
+            <div class="dataset-info">
+                <p>Powered by comprehensive animal sounds dataset from 
+                <a href="https://www.kaggle.com/datasets/caoofficial/animal-sounds" target="_blank" class="dataset-link">Kaggle Animal Sounds Collection</a></p>
+            </div>
+        </header>
+
+        <!-- Audio Input Options -->
+        <div class="audio-options">
+            <div class="option-card active" id="uploadOption">
+                <div class="option-icon">📁</div>
+                <div class="option-title">Upload Audio File</div>
+                <div class="option-desc">Upload recorded forest sounds from your device</div>
+            </div>
+            <div class="option-card" id="recordOption">
+                <div class="option-icon">🎙</div>
+                <div class="option-title">Record Live Audio</div>
+                <div class="option-desc">Record forest sounds in real-time using your microphone</div>
+            </div>
+        </div>
+
+        <!-- Upload Section -->
+        <div class="upload-section" id="uploadSection">
+            <div class="upload-area" id="uploadArea">
+                <div class="upload-icon">🎵</div>
+                <div class="upload-text">Drop your forest audio file here</div>
+                <div class="upload-subtext">or click to browse (MP3, WAV, M4A supported)</div>
+                <input type="file" id="audioInput" accept="audio/*">
+            </div>
+        </div>
+
+        <!-- Recording Section -->
+        <div class="recording-section" id="recordingSection" style="display: none;">
+            <div class="recording-controls">
+                <button class="record-button" id="recordButton">
+                    <span id="recordIcon">🎙</span>
+                    <span id="recordText">Start Recording</span>
+                </button>
+                <div class="recording-timer" id="recordingTimer" style="display: none;">00:00</div>
+            </div>
+            
+            <div class="recording-visualization" id="recordingVisualization" style="display: none;">
+                <div class="wave-container" id="waveContainer">
+                    <!-- Audio visualization bars will be generated here -->
+                </div>
+            </div>
+            
+            <div class="permission-message" id="permissionMessage" style="display: none;">
+                <strong>🎙 Microphone Access Needed</strong><br>
+                Please allow microphone access to record forest sounds. Click "Allow" when prompted by your browser.
+            </div>
+            
+            <div class="error-message" id="errorMessage" style="display: none;">
+                <strong>❌ Recording Error</strong><br>
+                <span id="errorText">Unable to access microphone. Please check your browser permissions.</span>
+            </div>
+            
+            <div class="audio-controls" id="recordedControls" style="display: none;">
+                <button class="btn" id="playRecordedBtn">▶ Play Recording</button>
+                <button class="btn" id="analyzeBtn">🔍 Analyze Audio</button>
+                <audio id="recordedAudio" controls style="margin-left: 15px;"></audio>
+            </div>
+        </div>
+
+        <!-- Progress Bar -->
+        <div class="progress-bar" id="progressBar" style="display: none;">
+            <div class="progress-fill" id="progressFill"></div>
+        </div>
+
+        <div class="analysis-section" id="analysisSection">
+            <div class="spectrogram-panel">
+                <h3 class="panel-title">🔊 Audio Spectrogram</h3>
+                <div class="spectrogram-container" id="spectrogramContainer">
+                    <div class="loading">
+                        <div class="spinner"></div>
+                        <div>Generating spectrogram...</div>
+                    </div>
+                </div>
+                <div class="audio-controls">
+                    <button class="btn" id="playBtn">▶ Play Audio</button>
+                    <audio id="audioPlayer" controls style="display: none;"></audio>
+                </div>
+            </div>
+
+            <div class="results-panel">
+                <h3 class="panel-title">🦅 Species Detection</h3>
+                <div id="speciesResults">
+                    <div class="loading">
+                        <div class="spinner"></div>
+                        <div>Analyzing species...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="dashboard-section" id="dashboardSection">
+            <div class="dashboard-card">
+                <h3 class="panel-title">📊 Species Distribution</h3>
+                <div class="chart-container">
+                    <canvas id="pieChart"></canvas>
+                </div>
+            </div>
+
+            <div class="dashboard-card">
+                <h3 class="panel-title">⏰ Activity Timeline</h3>
+                <div class="chart-container">
+                    <canvas id="timelineChart"></canvas>
+                </div>
+            </div>
+
+            <div class="dashboard-card">
+                <h3 class="panel-title">📈 Audio Analysis</h3>
+                <div class="chart-container">
+                    <canvas id="frequencyChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <div class="story-section" id="storySection">
+            <h3 class="panel-title">📖 Forest Soundscape Story</h3>
+            <div class="story-content" id="storyContent">
+                <!-- Story will be generated here -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global variables
+        let audioContext;
+        let audioBuffer;
+        let audioData;
+        let pieChart, timelineChart, frequencyChart;
+        let mediaRecorder;
+        let recordedChunks = [];
+        let isRecording = false;
+        let recordingStartTime;
+        let recordingTimer;
+        let stream;
+        let analyser;
+        let dataArray;
+        let animationId;
+
+        // Mock species data for demonstration
+        const mockSpeciesData = [
+            { name: 'Robin', confidence: 0.85, type: 'bird', frequency: [2000, 8000] },
+            { name: 'Cricket', confidence: 0.78, type: 'insect', frequency: [3000, 12000] },
+            { name: 'Woodpecker', confidence: 0.72, type: 'bird', frequency: [1000, 4000] },
+            { name: 'Owl', confidence: 0.65, type: 'bird', frequency: [200, 2000] },
+            { name: 'Cicada', confidence: 0.60, type: 'insect', frequency: [4000, 15000] }
+        ];
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            initializeAudio();
+            setupEventListeners();
+        });
+
+        function initializeAudio() {
+            if (window.AudioContext || window.webkitAudioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+        }
+
+        function setupEventListeners() {
+            const uploadArea = document.getElementById('uploadArea');
+            const audioInput = document.getElementById('audioInput');
+            const playBtn = document.getElementById('playBtn');
+            const uploadOption = document.getElementById('uploadOption');
+            const recordOption = document.getElementById('recordOption');
+            const recordButton = document.getElementById('recordButton');
+            const playRecordedBtn = document.getElementById('playRecordedBtn');
+            const analyzeBtn = document.getElementById('analyzeBtn');
+
+            // Option selection
+            uploadOption.addEventListener('click', () => switchToUpload());
+            recordOption.addEventListener('click', () => switchToRecord());
+
+            // Upload area events
+            uploadArea.addEventListener('click', () => audioInput.click());
+            uploadArea.addEventListener('dragover', handleDragOver);
+            uploadArea.addEventListener('drop', handleFileDrop);
+            uploadArea.addEventListener('dragleave', handleDragLeave);
+
+            // File input change
+            audioInput.addEventListener('change', (e) => {
+                if (e.target.files.length > 0) {
+                    handleFile(e.target.files[0]);
+                }
+            });
+
+            // Recording controls
+            recordButton.addEventListener('click', toggleRecording);
+            playRecordedBtn.addEventListener('click', toggleRecordedPlayback);
+            analyzeBtn.addEventListener('click', analyzeRecordedAudio);
+
+            // Play button
+            playBtn.addEventListener('click', toggleAudioPlayback);
+        }
+
+        function switchToUpload() {
+            document.getElementById('uploadOption').classList.add('active');
+            document.getElementById('recordOption').classList.remove('active');
+            document.getElementById('uploadSection').style.display = 'block';
+            document.getElementById('recordingSection').style.display = 'none';
+            resetRecording();
+        }
+
+        function switchToRecord() {
+            document.getElementById('uploadOption').classList.remove('active');
+            document.getElementById('recordOption').classList.add('active');
+            document.getElementById('uploadSection').style.display = 'none';
+            document.getElementById('recordingSection').style.display = 'block';
+            setupRecording();
+        }
+
+        async function setupRecording() {
+            try {
+                // Hide error messages
+                document.getElementById('errorMessage').style.display = 'none';
+                document.getElementById('permissionMessage').style.display = 'block';
+
+                // Request microphone permission
+                stream = await navigator.mediaDevices.getUserMedia({ 
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true,
+                        sampleRate: 44100
+                    } 
+                });
+
+                // Hide permission message
+                document.getElementById('permissionMessage').style.display = 'none';
+
+                // Initialize audio context and analyser for visualization
+                if (!audioContext) {
+                    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                }
+
+                const source = audioContext.createMediaStreamSource(stream);
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 256;
+                source.connect(analyser);
+
+                dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+                // Setup media recorder
+                mediaRecorder = new MediaRecorder(stream);
+                recordedChunks = [];
+
+                mediaRecorder.ondataavailable = (event) => {
+                    if (event.data.size > 0) {
+                        recordedChunks.push(event.data);
+                    }
+                };
+
+                mediaRecorder.onstop = () => {
+                    const blob = new Blob(recordedChunks, { type: 'audio/webm' });
+                    const url = URL.createObjectURL(blob);
+                    document.getElementById('recordedAudio').src = url;
+                    document.getElementById('recordedControls').style.display = 'flex';
+                };
+
+                // Create visualization bars
+                createVisualizationBars();
+
+            } catch (error) {
+                console.error('Error accessing microphone:', error);
+                showRecordingError(error.message);
+            }
+        }
+
+        function createVisualizationBars() {
+            const waveContainer = document.getElementById('waveContainer');
+            waveContainer.innerHTML = '';
+            
+            for (let i = 0; i < 50; i++) {
+                const bar = document.createElement('div');
+                bar.className = 'wave-bar';
+                bar.style.height = '10px';
+                waveContainer.appendChild(bar);
+            }
+        }
+
+        function toggleRecording() {
+            if (!isRecording) {
+                startRecording();
+            } else {
+                stopRecording();
+            }
+        }
+
+        function startRecording() {
+            if (!mediaRecorder || mediaRecorder.state === 'recording') return;
+
+            recordedChunks = [];
+            mediaRecorder.start();
+            isRecording = true;
+            recordingStartTime = Date.now();
+
+            // Update UI
+            const recordButton = document.getElementById('recordButton');
+            const recordIcon = document.getElementById('recordIcon');
+            const recordText = document.getElementById('recordText');
+            
+            recordButton.classList.add('recording');
+            recordIcon.textContent = '⏹';
+            recordText.textContent = 'Stop Recording';
+            
+            document.getElementById('recordingTimer').style.display = 'block';
+            document.getElementById('recordingVisualization').style.display = 'block';
+            document.getElementById('recordedControls').style.display = 'none';
+
+            // Start timer and visualization
+            startRecordingTimer();
+            startVisualization();
+        }
+
+        function stopRecording() {
+            if (!mediaRecorder || mediaRecorder.state !== 'recording') return;
+
+            mediaRecorder.stop();
+            isRecording = false;
+
+            // Update UI
+            const recordButton = document.getElementById('recordButton');
+            const recordIcon = document.getElementById('recordIcon');
+            const recordText = document.getElementById('recordText');
+            
+            recordButton.classList.remove('recording');
+            recordIcon.textContent = '🎙';
+            recordText.textContent = 'Start Recording';
+            
+            document.getElementById('recordingTimer').style.display = 'none';
+
+            // Stop timer and visualization
+            clearInterval(recordingTimer);
+            if (animationId) {
+                cancelAnimationFrame(animationId);
+            }
+        }
+
+        function startRecordingTimer() {
+            recordingTimer = setInterval(() => {
+                const elapsed = Date.now() - recordingStartTime;
+                const minutes = Math.floor(elapsed / 60000);
+                const seconds = Math.floor((elapsed % 60000) / 1000);
+                document.getElementById('recordingTimer').textContent = 
+                    ${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')};
+            }, 1000);
+        }
+
+        function startVisualization() {
+            const bars = document.querySelectorAll('.wave-bar');
+            
+            function animate() {
+                if (!isRecording) return;
+                
+                analyser.getByteFrequencyData(dataArray);
+                
+                for (let i = 0; i < bars.length; i++) {
+                    const dataIndex = Math.floor(i * dataArray.length / bars.length);
+                    const height = Math.max(10, (dataArray[dataIndex] / 255) * 80);
+                    bars[i].style.height = height + 'px';
+                }
+                
+                animationId = requestAnimationFrame(animate);
+            }
+            
+            animate();
+        }
+
+        function toggleRecordedPlayback() {
+            const audio = document.getElementById('recordedAudio');
+            const button = document.getElementById('playRecordedBtn');
+            
+            if (audio.paused) {
+                audio.play();
+                button.innerHTML = '⏸ Pause Recording';
+            } else {
+                audio.pause();
+                button.innerHTML = '▶ Play Recording';
+            }
+            
+            audio.addEventListener('ended', () => {
+                button.innerHTML = '▶ Play Recording';
+            });
+        }
+
+        async function analyzeRecordedAudio() {
+            const audio = document.getElementById('recordedAudio');
+            if (!audio.src) return;
+
+            try {
+                // Convert recorded audio to format suitable for analysis
+                const response = await fetch(audio.src);
+                const arrayBuffer = await response.arrayBuffer();
+                
+                audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+                audioData = audioBuffer.getChannelData(0);
+                
+                // Start analysis
+                showProgress();
+                await processAudio();
+                showResults();
+            } catch (error) {
+                console.error('Error analyzing recorded audio:', error);
+                alert('Error analyzing recorded audio');
+            }
+        }
+
+        function resetRecording() {
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+            }
+            if (animationId) {
+                cancelAnimationFrame(animationId);
+            }
+            if (recordingTimer) {
+                clearInterval(recordingTimer);
+            }
+            
+            isRecording = false;
+            document.getElementById('recordedControls').style.display = 'none';
+            document.getElementById('recordingVisualization').style.display = 'none';
+            document.getElementById('recordingTimer').style.display = 'none';
+            document.getElementById('permissionMessage').style.display = 'none';
+            document.getElementById('errorMessage').style.display = 'none';
+        }
+
+        function showRecordingError(message) {
+            document.getElementById('permissionMessage').style.display = 'none';
+            document.getElementById('errorMessage').style.display = 'block';
+            document.getElementById('errorText').textContent = message;
+        }
+
+        function handleDragOver(e) {
+            e.preventDefault();
+            document.getElementById('uploadArea').classList.add('drag-over');
+        }
+
+        function handleDragLeave(e) {
+            e.preventDefault();
+            document.getElementById('uploadArea').classList.remove('drag-over');
+        }
+
+        function handleFileDrop(e) {
+            e.preventDefault();
+            document.getElementById('uploadArea').classList.remove('drag-over');
+            
+            if (e.dataTransfer.files.length > 0) {
+                handleFile(e.dataTransfer.files[0]);
+            }
+        }
+
+        async function handleFile(file) {
+            if (!file.type.startsWith('audio/')) {
+                alert('Please select an audio file');
+                return;
+            }
+
+            showProgress();
+            
+            // Load and process audio
+            try {
+                await loadAudioFile(file);
+                await processAudio();
+                showResults();
+            } catch (error) {
+                console.error('Error processing audio:', error);
+                alert('Error processing audio file');
+                hideProgress();
+            }
+        }
+
+        function showProgress() {
+            document.getElementById('progressBar').style.display = 'block';
+            document.getElementById('analysisSection').style.display = 'grid';
+            
+            // Simulate progress
+            let progress = 0;
+            const progressFill = document.getElementById('progressFill');
+            const interval = setInterval(() => {
+                progress += Math.random() * 15;
+                if (progress >= 100) {
+                    progress = 100;
+                    clearInterval(interval);
+                    setTimeout(hideProgress, 500);
+                }
+                progressFill.style.width = progress + '%';
+            }, 200);
+        }
+
+        function hideProgress() {
+            document.getElementById('progressBar').style.display = 'none';
+        }
+
+        async function loadAudioFile(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = async (e) => {
+                    try {
+                        audioBuffer = await audioContext.decodeAudioData(e.target.result);
+                        audioData = audioBuffer.getChannelData(0);
+                        
+                        // Setup audio player
+                        const audioPlayer = document.getElementById('audioPlayer');
+                        audioPlayer.src = URL.createObjectURL(file);
+                        audioPlayer.style.display = 'block';
+                        
+                        resolve();
+                    } catch (error) {
+                        reject(error);
+                    }
+                };
+                reader.onerror = reject;
+                reader.readAsArrayBuffer(file);
+            });
+        }
+
+        async function processAudio() {
+            // Generate spectrogram
+            await generateSpectrogram();
+            
+            // Simulate ML processing delay
+            await new Promise(resolve => setTimeout(resolve, 1500));
+            
+            // Show species results
+            displaySpeciesResults();
+        }
+
+        function generateSpectrogram() {
+            return new Promise((resolve) => {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                const container = document.getElementById('spectrogramContainer');
+                
+                canvas.width = 600;
+                canvas.height = 300;
+                canvas.id = 'spectrogramCanvas';
+                
+                // Create a colorful spectrogram visualization
+                const width = canvas.width;
+                const height = canvas.height;
+                
+                ctx.fillStyle = '#1a1a2e';
+                ctx.fillRect(0, 0, width, height);
+                
+                // Generate spectrogram-like visualization
+                for (let x = 0; x < width; x += 2) {
+                    for (let y = 0; y < height; y += 3) {
+                        const intensity = Math.random() * Math.sin(x * 0.01) * Math.sin(y * 0.02);
+                        if (intensity > 0.3) {
+                            const hue = 200 + (intensity * 60);
+                            const saturation = 70 + (intensity * 30);
+                            const lightness = 40 + (intensity * 40);
+                            ctx.fillStyle = hsl(${hue}, ${saturation}%, ${lightness}%);
+                            ctx.fillRect(x, y, 2, 3);
+                        }
+                    }
+                }
+                
+                // Clear container and add canvas
+                container.innerHTML = '';
+                container.appendChild(canvas);
+                
+                setTimeout(resolve, 1000);
+            });
+        }
+
+        function displaySpeciesResults() {
+            const resultsContainer = document.getElementById('speciesResults');
+            
+            let html = '';
+            mockSpeciesData.forEach(species => {
+                html += `
+                    <div style="margin-bottom: 20px; padding: 15px; border: 1px solid #e0e0e0; border-radius: 10px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                            <span class="species-tag">${species.name}</span>
+                            <span style="color: #666; font-size: 0.9rem;">${species.type}</span>
+                        </div>
+                        <div class="confidence-bar">
+                            <div class="confidence-fill" style="width: ${species.confidence * 100}%"></div>
+                        </div>
+                        <div style="font-size: 0.8rem; color: #666;">
+                            Confidence: ${Math.round(species.confidence * 100)}%
+                        </div>
+                    </div>
+                `;
+            });
+            
+            resultsContainer.innerHTML = html;
+        }
+
+        function showResults() {
+            document.getElementById('dashboardSection').style.display = 'grid';
+            document.getElementById('storySection').style.display = 'block';
+            
+            createCharts();
+            generateStory();
+        }
+
+        function createCharts() {
+            // Species Distribution Pie Chart
+            const pieCtx = document.getElementById('pieChart').getContext('2d');
+            const speciesTypes = mockSpeciesData.reduce((acc, species) => {
+                acc[species.type] = (acc[species.type] || 0) + 1;
+                return acc;
+            }, {});
+            
+            pieChart = new Chart(pieCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: Object.keys(speciesTypes),
+                    datasets: [{
+                        data: Object.values(speciesTypes),
+                        backgroundColor: ['#4a7c23', '#5d8f2a', '#3e6b1f', '#2d5016'],
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom'
+                        }
+                    }
+                }
+            });
+
+            // Activity Timeline
+            const timelineCtx = document.getElementById('timelineChart').getContext('2d');
+            const timeLabels = ['0-10s', '10-20s', '20-30s', '30-40s', '40-50s'];
+            const activityData = timeLabels.map(() => Math.floor(Math.random() * 10) + 1);
+            
+            timelineChart = new Chart(timelineCtx, {
+                type: 'line',
+                data: {
+                    labels: timeLabels,
+                    datasets: [{
+                        label: 'Activity Level',
+                        data: activityData,
+                        borderColor: '#4a7c23',
+                        backgroundColor: 'rgba(74, 124, 35, 0.1)',
+                        fill: true,
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+
+            // Frequency Analysis
+            const freqCtx = document.getElementById('frequencyChart').getContext('2d');
+            const freqLabels = ['0-2kHz', '2-4kHz', '4-8kHz', '8-12kHz', '12-16kHz'];
+            const freqData = freqLabels.map(() => Math.floor(Math.random() * 80) + 20);
+            
+            frequencyChart = new Chart(freqCtx, {
+                type: 'bar',
+                data: {
+                    labels: freqLabels,
+                    datasets: [{
+                        label: 'Intensity',
+                        data: freqData,
+                        backgroundColor: 'rgba(74, 124, 35, 0.7)',
+                        borderColor: '#4a7c23',
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+        }
+
+        function generateStory() {
+            const storyContent = document.getElementById('storyContent');
+            const topSpecies = mockSpeciesData.slice(0, 3);
+            
+            const story = `
+                <p>Your forest recording reveals a vibrant ecosystem teeming with life. The audio analysis detected <strong>${mockSpeciesData.length} distinct species</strong> across different taxonomic groups.</p>
+                
+                <p>The soundscape is dominated by <strong>${topSpecies[0].name}</strong> with ${Math.round(topSpecies[0].confidence * 100)}% confidence, suggesting an active bird population. The presence of <strong>${topSpecies[1].name}</strong> indicates a healthy insect ecosystem, while <strong>${topSpecies[2].name}</strong> calls add to the symphony of this biodiverse habitat.</p>
+                
+                <p>The frequency analysis shows rich activity across multiple ranges, from deep owl hoots in the lower frequencies to high-pitched cricket chirps. This acoustic diversity suggests a well-balanced ecosystem with species occupying different ecological niches.</p>
+                
+                <p><strong>Key Insights:</strong></p>
+                <ul style="margin-left: 20px; margin-top: 15px;">
+                    <li>Peak activity observed in the 2-8kHz range, typical of songbird communication</li>
+                    <li>Consistent background insect activity throughout the recording</li>
+                    <li>Evidence of both diurnal and crepuscular species</li>
+                    <li>No signs of human disturbance in the acoustic signature</li>
+                </ul>
+                
+                <p style="margin-top: 20px; font-style: italic; color: #4a7c23;">This forest appears to be thriving with a healthy balance of species, making it an important habitat for conservation efforts.</p>
+            `;
+            
+            storyContent.innerHTML = story;
+        }
+
+        function toggleAudioPlayback() {
+            const audioPlayer = document.getElementById('audioPlayer');
+            const playBtn = document.getElementById('playBtn');
+            
+            if (audioPlayer.paused) {
+                audioPlayer.play();
+                playBtn.innerHTML = '⏸ Pause Audio';
+            } else {
+                audioPlayer.pause();
+                playBtn.innerHTML = '▶ Play Audio';
+            }
+            
+            audioPlayer.addEventListener('ended', () => {
+                playBtn.innerHTML = '▶ Play Audio';
+            });
+        }
+    </script>
+</body>
+</html>
